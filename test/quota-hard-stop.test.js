@@ -6,6 +6,7 @@ import { join } from "node:path";
 
 import QuotaHardStopPlugin from "../quota-hard-stop.js";
 import { resolveConfig } from "../lib/config.js";
+import { writePostpone, clearPostpone } from "../lib/postpone.js";
 
 const { __test__ } = QuotaHardStopPlugin;
 
@@ -230,6 +231,113 @@ test("chat.params: windowFallback result still blocks when below threshold", asy
       const plugin = await QuotaHardStopPlugin({ directory: proj });
 
       await assert.rejects(plugin["chat.params"]({ provider: { info: { id: "openai" } } }), /Blocked/);
+    });
+  } finally {
+    __test__.resetQuotaReader();
+    __test__.clearState();
+  }
+});
+
+test("active postpone suppresses an otherwise-blocking result when allowPostpone is enabled", async () => {
+  const { xdg, proj } = sandbox();
+  writeFileSync(
+    join(proj, ".opencode-hard-limit.json"),
+    JSON.stringify({
+      minRemaining: 30,
+      allowPostpone: true,
+      cacheTtlMs: 100000,
+      minRefreshIntervalMs: 100000,
+    }),
+  );
+
+  __test__.clearState();
+  try {
+    await withEnv({ XDG_CONFIG_HOME: xdg }, async () => {
+      __test__.setQuotaReader(async () => okResult(5)); // below 30% threshold -> would block
+      writePostpone(30);
+
+      const plugin = await QuotaHardStopPlugin({ directory: proj });
+      await assert.doesNotReject(() =>
+        plugin["chat.params"]({ provider: { info: { id: "anthropic" } } }),
+      );
+    });
+  } finally {
+    clearPostpone();
+    __test__.resetQuotaReader();
+    __test__.clearState();
+  }
+});
+
+test("stale postpone file is ignored when allowPostpone is disabled (still blocks)", async () => {
+  const { xdg, proj } = sandbox();
+  writeFileSync(
+    join(proj, ".opencode-hard-limit.json"),
+    JSON.stringify({
+      minRemaining: 30,
+      allowPostpone: false,
+      cacheTtlMs: 100000,
+      minRefreshIntervalMs: 100000,
+    }),
+  );
+
+  __test__.clearState();
+  try {
+    await withEnv({ XDG_CONFIG_HOME: xdg }, async () => {
+      __test__.setQuotaReader(async () => okResult(5));
+      writePostpone(30); // orphaned postpone state from when the flag was previously on
+
+      const plugin = await QuotaHardStopPlugin({ directory: proj });
+      await assert.rejects(
+        () => plugin["chat.params"]({ provider: { info: { id: "anthropic" } } }),
+        /Blocked/,
+      );
+    });
+  } finally {
+    clearPostpone();
+    __test__.resetQuotaReader();
+    __test__.clearState();
+  }
+});
+
+test("block message mentions the postpone hint only when allowPostpone is enabled", async () => {
+  const { xdg, proj } = sandbox();
+  writeFileSync(
+    join(proj, ".opencode-hard-limit.json"),
+    JSON.stringify({ minRemaining: 30, allowPostpone: true, cacheTtlMs: 100000, minRefreshIntervalMs: 100000 }),
+  );
+  __test__.clearState();
+  try {
+    await withEnv({ XDG_CONFIG_HOME: xdg }, async () => {
+      __test__.setQuotaReader(async () => okResult(5));
+      const plugin = await QuotaHardStopPlugin({ directory: proj });
+      await assert.rejects(
+        () => plugin["chat.params"]({ provider: { info: { id: "anthropic" } } }),
+        /opencode-hard-limit postpone/,
+      );
+    });
+  } finally {
+    __test__.resetQuotaReader();
+    __test__.clearState();
+  }
+});
+
+test("block message omits the postpone hint when allowPostpone is disabled (default)", async () => {
+  const { xdg, proj } = sandbox();
+  writeFileSync(
+    join(proj, ".opencode-hard-limit.json"),
+    JSON.stringify({ minRemaining: 30, cacheTtlMs: 100000, minRefreshIntervalMs: 100000 }),
+  );
+  __test__.clearState();
+  try {
+    await withEnv({ XDG_CONFIG_HOME: xdg }, async () => {
+      __test__.setQuotaReader(async () => okResult(5));
+      const plugin = await QuotaHardStopPlugin({ directory: proj });
+      try {
+        await plugin["chat.params"]({ provider: { info: { id: "anthropic" } } });
+        assert.fail("expected chat.params to throw");
+      } catch (err) {
+        assert.doesNotMatch(err.message, /postpone/);
+      }
     });
   } finally {
     __test__.resetQuotaReader();

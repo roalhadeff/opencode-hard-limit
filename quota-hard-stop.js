@@ -21,6 +21,7 @@ import { readWeekly, MONITORED_PROVIDERS, quotaCachePath } from "./lib/quota.js"
 import { resolveConfig, windowForProvider } from "./lib/config.js";
 import { resolveQuotaProvider, evaluate } from "./lib/evaluate.js";
 import { ensureTuiDeployed, cleanupLegacyCopies } from "./lib/deploy.js";
+import { isPostponeActive } from "./lib/postpone.js";
 
 const cache = new Map(); // "quotaProvider:window" -> { at, result, ttl }
 const inflight = new Map(); // "quotaProvider:window" -> Promise (dedupe concurrent checks)
@@ -132,7 +133,12 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
           refreshQuota(quotaProvider, cfg, { window: quotaWindow }).catch(() => {});
         }
       }
-      const { block, reason } = evaluate(quotaProvider, res, cfg);
+      let { block, reason } = evaluate(quotaProvider, res, cfg);
+
+      if (block && cfg.allowPostpone && isPostponeActive()) {
+        block = false;
+        reason = "postponed";
+      }
 
       if (block) {
         let blockMsg;
@@ -160,6 +166,12 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
               `Refresh your provider login or set OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR=0 to allow.`
             : `quota check failed (${hr}). ` +
               `Set OPENCODE_QUOTA_BLOCK_ON_ERROR=0 to allow when quota cannot be checked.`;
+        }
+        if (cfg.allowPostpone) {
+          blockMsg +=
+            ` To postpone this block for a while, run "!opencode-hard-limit postpone <minutes>" ` +
+            `(shell mode, no LLM cost) — the number is how many minutes to postpone for, ` +
+            `e.g. "!opencode-hard-limit postpone 60" postpones for 60 minutes (default 30 if omitted).`;
         }
         throw new Error(
           `[quota-hard-stop] Blocked ${providerId} (${quotaProvider}): ${blockMsg}`,
