@@ -156,6 +156,41 @@ test("blockOnAuthError coercion and env override", () => {
   });
 });
 
+test("allowPostpone default is false", () => {
+  const { xdg, proj } = sandbox();
+  withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_ALLOW_POSTPONE: undefined }, () => {
+    const { values, sources } = resolveConfig({ projectDir: proj });
+    assert.equal(values.allowPostpone, false);
+    assert.equal(sources.allowPostpone, "default");
+  });
+});
+
+test("allowPostpone coercion and env override", () => {
+  const { xdg, proj } = sandbox();
+  withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_ALLOW_POSTPONE: "1" }, () => {
+    assert.equal(resolveConfig({ projectDir: proj }).values.allowPostpone, true);
+  });
+  withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_ALLOW_POSTPONE: "false" }, () => {
+    assert.equal(resolveConfig({ projectDir: proj }).values.allowPostpone, false);
+  });
+  withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_ALLOW_POSTPONE: "maybe" }, () => {
+    // invalid -> falls through to default (false)
+    assert.equal(resolveConfig({ projectDir: proj }).values.allowPostpone, false);
+  });
+});
+
+test("allowPostpone: precedence env > project > global > default", () => {
+  const { xdg, proj } = sandbox();
+  const gdir = join(xdg, "opencode", "opencode-hard-limit");
+  mkdirSync(gdir, { recursive: true });
+  writeFileSync(join(gdir, "config.json"), JSON.stringify({ allowPostpone: true }));
+  withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_ALLOW_POSTPONE: undefined }, () => {
+    const r = resolveConfig({ projectDir: proj });
+    assert.equal(r.values.allowPostpone, true);
+    assert.equal(r.sources.allowPostpone, "global");
+  });
+});
+
 test("refresh spacing and rate-limit backoff resolve from env", () => {
   const { xdg, proj } = sandbox();
   withEnv(
