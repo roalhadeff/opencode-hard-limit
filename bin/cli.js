@@ -29,6 +29,14 @@ import {
   cleanupLegacyCopies,
 } from "../lib/deploy.js";
 
+import {
+  writePostpone,
+  readPostpone,
+  clearPostpone,
+  isPostponeActive,
+  DEFAULT_POSTPONE_MINUTES,
+} from "../lib/postpone.js";
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..");
 
@@ -82,6 +90,7 @@ function buildPatch(values) {
   if (values.window !== undefined) patch.window = values.window;
   if (values["window-anthropic"] !== undefined) patch.windowAnthropic = values["window-anthropic"];
   if (values["window-openai"] !== undefined) patch.windowOpenai = values["window-openai"];
+  if (values["allow-postpone"] !== undefined) patch.allowPostpone = values["allow-postpone"];
   return patch;
 }
 
@@ -100,6 +109,8 @@ const SHARED_OPTIONS = {
   window: { type: "string" },
   "window-anthropic": { type: "string" },
   "window-openai": { type: "string" },
+  "allow-postpone": { type: "string" },
+  clear: { type: "boolean" },
   install: { type: "boolean" },
   help: { type: "boolean", short: "h" },
 };
@@ -277,6 +288,45 @@ function showResolved() {
   print(`  project: ${paths.project}${existsSync(paths.project) ? "" : "  (not created)"}`);
   print("");
   print("Precedence: env var > project file > global file > default");
+
+  if (values.allowPostpone) {
+    const entry = readPostpone();
+    print("");
+    if (entry && entry.until > Date.now()) {
+      const remainMin = Math.ceil((entry.until - Date.now()) / 60000);
+      print(`Postpone: ACTIVE for ${remainMin} more min (until ${new Date(entry.until).toLocaleTimeString()})`);
+    } else {
+      print("Postpone: not active");
+    }
+  }
+}
+
+function postponeCommand(values, positionals) {
+  const cfg = resolveConfig({ projectDir: process.cwd() }).values;
+  if (!cfg.allowPostpone) {
+    fail(
+      "postpone is disabled. Enable it first with: opencode-hard-limit set --allow-postpone true",
+    );
+  }
+
+  if (values.clear) {
+    clearPostpone();
+    print("Postpone cleared. Quota blocks will apply immediately again.");
+    return;
+  }
+
+  const rawMinutes = positionals[1];
+  const minutes = rawMinutes === undefined ? DEFAULT_POSTPONE_MINUTES : Number(rawMinutes);
+  if (rawMinutes !== undefined && !Number.isFinite(minutes)) {
+    fail(`invalid minutes: "${rawMinutes}". Pass a number, e.g. "opencode-hard-limit postpone 60".`);
+  }
+
+  const { until, minutes: clamped } = writePostpone(minutes);
+  print(
+    `Quota block postponed for ${clamped} minute(s) (the number after "postpone" is minutes). ` +
+      `Active until ${new Date(until).toLocaleTimeString()}.`,
+  );
+  print(`Cancel early with: opencode-hard-limit postpone --clear`);
 }
 
 function usage() {
@@ -286,6 +336,8 @@ Usage:
   opencode-hard-limit init [--global|--project] [--threshold N] [--install]
   opencode-hard-limit set  --threshold N [--global|--project]
   opencode-hard-limit get
+  opencode-hard-limit postpone [minutes]      postpone a block for N minutes (default ${DEFAULT_POSTPONE_MINUTES}; requires --allow-postpone)
+  opencode-hard-limit postpone --clear        cancel an active postpone early
   opencode-hard-limit install
   opencode-hard-limit uninstall
 
@@ -305,11 +357,14 @@ Settings (all optional except threshold for 'set'):
   --window w           quota window to track: 5h | Weekly (default ${DEFAULTS.window})
   --window-anthropic w quota window for Claude only: 5h | Weekly (default: inherits --window)
   --window-openai w    quota window for OpenAI/Codex only: 5h | Weekly (default: inherits --window)
+  --allow-postpone b   enable the "opencode-hard-limit postpone" bypass command: true|false (default ${DEFAULTS.allowPostpone})
 
 Examples:
   opencode-hard-limit init --global --threshold 30 --install
   opencode-hard-limit set --threshold 30 --global
-  opencode-hard-limit get`);
+  opencode-hard-limit get
+  opencode-hard-limit set --allow-postpone true --global
+  opencode-hard-limit postpone 60`);
 }
 
 async function main() {
@@ -323,6 +378,11 @@ async function main() {
 
   if (cmd === "get" || cmd === "show") {
     showResolved();
+    return;
+  }
+
+  if (cmd === "postpone") {
+    postponeCommand(values, positionals);
     return;
   }
 

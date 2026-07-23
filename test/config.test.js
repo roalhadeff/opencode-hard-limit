@@ -242,6 +242,25 @@ test("CLI writes stale-margin to project config", () => {
   });
 });
 
+test("CLI writes allow-postpone to project config", () => {
+  const { xdg, proj } = sandbox();
+  withEnv({ XDG_CONFIG_HOME: xdg }, () => {
+    const result = spawnSync(
+      process.execPath,
+      [join(process.cwd(), "bin", "cli.js"), "set", "--allow-postpone", "true", "--project"],
+      {
+        cwd: proj,
+        env: { ...process.env, XDG_CONFIG_HOME: xdg },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const r = resolveConfig({ projectDir: proj });
+    assert.equal(r.values.allowPostpone, true);
+    assert.equal(r.sources.allowPostpone, "project");
+  });
+});
+
 test("window: default is 5h", () => {
   const { xdg, proj } = sandbox();
   withEnv({ XDG_CONFIG_HOME: xdg, OPENCODE_QUOTA_WINDOW: undefined }, () => {
