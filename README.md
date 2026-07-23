@@ -240,6 +240,7 @@ is no guessing.
 | `--window-openai` | `OPENCODE_QUOTA_WINDOW_OPENAI` | `windowOpenai` | *(inherits `window`)* | Override the quota window for OpenAI/Codex only. |
 | `--block-on-error` | `OPENCODE_QUOTA_BLOCK_ON_ERROR` | `blockOnError` | `true` | Block when quota check fails (timeout, unknown error). `false` fails open. |
 | `--block-on-auth-error` | `OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR` | `blockOnAuthError` | `false` | When quota cannot be read due to an auth/token error, `false` allows the call silently (no toast). `true` blocks like a hard stop. |
+| `--allow-postpone` | `OPENCODE_QUOTA_ALLOW_POSTPONE` | `allowPostpone` | `false` | Opt-in: enables the `opencode-hard-limit postpone` command to temporarily bypass an active block. See "Fail-postpone mode" below. |
 | `--cache-ttl` | `OPENCODE_QUOTA_CACHE_TTL_MS` | `cacheTtlMs` | `60000` | In-memory cache TTL per provider (ms). |
 | `--timeout` | `OPENCODE_QUOTA_TIMEOUT_MS` | `timeoutMs` | `20000` | Max wait for a quota check (ms). |
 | `--min-refresh` | `OPENCODE_QUOTA_MIN_REFRESH_MS` | `minRefreshIntervalMs` | `120000` | Minimum spacing between real quota fetches per provider/window (ms). |
@@ -256,6 +257,51 @@ Environment variables are handy for one-off overrides:
 ```sh
 OPENCODE_QUOTA_MIN_REMAINING=90 opencode   # temporarily stricter
 ```
+
+## Fail-postpone mode
+
+By default this plugin has two failure modes: **fail-closed** (`blockOnError: true` /
+`blockOnAuthError: true` — block when quota can't be checked) and **fail-open**
+(`blockOnError: false` / `blockOnAuthError: false` — allow when quota can't be
+checked). There's a third, opt-in mode: **fail-postpone** — a manual, time-boxed
+bypass of an otherwise-legitimate block, for when you've decided to accept the
+risk of running over quota for a little while.
+
+It's disabled by default. Enable it with:
+
+```bash
+opencode-hard-limit set --allow-postpone true --global
+```
+
+Once enabled, a block's error message includes a hint like:
+
+```
+[quota-hard-stop] Blocked anthropic (anthropic): quota 12% remaining is below
+the 30% threshold. ... To postpone this block for a while, run
+"!opencode-hard-limit postpone <minutes>" (shell mode, no LLM cost) — the
+number is how many minutes to postpone for, e.g.
+"!opencode-hard-limit postpone 60" postpones for 60 minutes (default 30 if
+omitted).
+```
+
+Type that command directly in OpenCode's prompt (the leading `!` runs it as a
+local shell command — no LLM call, no token cost):
+
+```
+!opencode-hard-limit postpone 60
+```
+
+This postpones **any** quota block (any provider, any window) for 60 minutes.
+Cancel it early with:
+
+```
+!opencode-hard-limit postpone --clear
+```
+
+`opencode-hard-limit get` shows whether a postpone is currently active and how
+much time is left. Postpone duration is clamped to 1–240 minutes. If
+`--allow-postpone` is later disabled, any leftover postpone timer is ignored —
+blocks resume immediately.
 
 ## Requirements
 
