@@ -66,6 +66,11 @@ function fakePkgRoot(dir, tsxContent = "// fake sidebar\nexport default function
     "// lib/reset.js\nexport function formatReset() {}",
     "utf8",
   );
+  writeFileSync(
+    join(dir, "lib", "postpone.js"),
+    "// lib/postpone.js\nexport function isPostponeActive() { return false; }",
+    "utf8",
+  );
   return dir;
 }
 
@@ -84,7 +89,7 @@ test("ensureTuiDeployed: deploys sidebar on first call", () => {
   });
 });
 
-test("ensureTuiDeployed: deploys lib/quota.js, lib/config.js, and lib/reset.js alongside the tsx", () => {
+test("ensureTuiDeployed: deploys lib/quota.js, lib/config.js, lib/reset.js, and lib/postpone.js alongside the tsx", () => {
   const { root, xdg } = sandbox();
   const pkg = fakePkgRoot(join(root, "pkg"));
   withEnv({ XDG_CONFIG_HOME: xdg }, () => {
@@ -102,6 +107,10 @@ test("ensureTuiDeployed: deploys lib/quota.js, lib/config.js, and lib/reset.js a
       existsSync(join(plugins, "lib", "reset.js")),
       "lib/reset.js should be deployed into plugins/lib/",
     );
+    assert.ok(
+      existsSync(join(plugins, "lib", "postpone.js")),
+      "lib/postpone.js should be deployed into plugins/lib/ (sidebar imports it for the postpone hint)",
+    );
     // Verify bytes match the source.
     const srcQuota = readFileSync(join(pkg, "lib", "quota.js"));
     const dstQuota = readFileSync(join(plugins, "lib", "quota.js"));
@@ -112,6 +121,9 @@ test("ensureTuiDeployed: deploys lib/quota.js, lib/config.js, and lib/reset.js a
     const srcReset = readFileSync(join(pkg, "lib", "reset.js"));
     const dstReset = readFileSync(join(plugins, "lib", "reset.js"));
     assert.ok(srcReset.equals(dstReset), "deployed lib/reset.js bytes must match source");
+    const srcPostpone = readFileSync(join(pkg, "lib", "postpone.js"));
+    const dstPostpone = readFileSync(join(plugins, "lib", "postpone.js"));
+    assert.ok(srcPostpone.equals(dstPostpone), "deployed lib/postpone.js bytes must match source");
   });
 });
 
