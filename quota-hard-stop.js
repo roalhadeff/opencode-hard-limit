@@ -169,22 +169,14 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
         }
         if (cfg.allowPostpone) {
           blockMsg +=
-            ` If you need to continue, tell the user to run "!opencode-hard-limit postpone <minutes>" ` +
-            `in OpenCode's shell mode (no LLM cost) — the number is how many minutes to postpone for, ` +
-            `e.g. "!opencode-hard-limit postpone 60" postpones for 60 minutes (default 30 if omitted). ` +
-            `Only the user can authorize this; do not run it yourself as a workaround.`;
+            ` To postpone this block, run: !opencode-hard-limit postpone <minutes> ` +
+            `(default 30, e.g. "!opencode-hard-limit postpone 60") in OpenCode's shell mode — no LLM cost.`;
         } else {
           blockMsg +=
-            ` There is no override configured for this. Wait for quota to refresh, or ask the user ` +
-            `to raise the threshold (opencode-hard-limit set --threshold <value> --global).`;
+            ` There is no override configured for this. Wait for quota to refresh, or raise the ` +
+            `threshold: opencode-hard-limit set --threshold <value> --global.`;
         }
-        throw new Error(
-          `[quota-hard-stop] Blocked ${providerId} (${quotaProvider}): STOP: do not retry this ` +
-            `request automatically. This is an intentional limit configured by the user, not a ` +
-            `transient error. If you are a subagent, copy this entire message verbatim into your ` +
-            `final report so it reaches your orchestrator and the user — do not just report failure. ` +
-            `${blockMsg}`,
-        );
+        throw new Error(`[quota-hard-stop] Blocked ${providerId} (${quotaProvider}): ${blockMsg}`);
       }
       // Otherwise allow silently — no toast/sound; the sidebar widget is the
       // only surface for quota state (including unreadable/fallback cases).

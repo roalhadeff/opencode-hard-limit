@@ -345,28 +345,3 @@ test("block message omits the postpone hint when allowPostpone is disabled (defa
   }
 });
 
-test("block message always tells the agent to STOP and not retry, regardless of allowPostpone", async () => {
-  for (const allowPostpone of [true, false]) {
-    const { xdg, proj } = sandbox();
-    writeFileSync(
-      join(proj, ".opencode-hard-limit.json"),
-      JSON.stringify({ minRemaining: 30, allowPostpone, cacheTtlMs: 100000, minRefreshIntervalMs: 100000 }),
-    );
-    __test__.clearState();
-    try {
-      await withEnv({ XDG_CONFIG_HOME: xdg }, async () => {
-        __test__.setQuotaReader(async () => okResult(5));
-        const plugin = await QuotaHardStopPlugin({ directory: proj });
-        try {
-          await plugin["chat.params"]({ provider: { info: { id: "anthropic" } } });
-          assert.fail("expected chat.params to throw");
-        } catch (err) {
-          assert.match(err.message, /STOP: do not retry this request automatically/);
-        }
-      });
-    } finally {
-      __test__.resetQuotaReader();
-      __test__.clearState();
-    }
-  }
-});
