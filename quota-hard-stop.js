@@ -181,7 +181,9 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
         throw new Error(
           `[quota-hard-stop] Blocked ${providerId} (${quotaProvider}): STOP: do not retry this ` +
             `request automatically. This is an intentional limit configured by the user, not a ` +
-            `transient error. ${blockMsg}`,
+            `transient error. If you are a subagent, copy this entire message verbatim into your ` +
+            `final report so it reaches your orchestrator and the user — do not just report failure. ` +
+            `${blockMsg}`,
         );
       }
       // Otherwise allow silently — no toast/sound; the sidebar widget is the
