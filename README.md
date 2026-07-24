@@ -277,23 +277,29 @@ Once enabled, a block's error message includes a hint like:
 
 ```
 [quota-hard-stop] Blocked anthropic (anthropic): quota 12% remaining is below
-the 30% threshold. ... To postpone this block, run: !opencode-hard-limit
-postpone <minutes> (default 30, e.g. "!opencode-hard-limit postpone 60") in
-OpenCode's shell mode — no LLM cost.
+the 30% threshold. ... To postpone this block: in OpenCode, type ! by itself
+first to enter shell mode (pasting a whole "!opencode-hard-limit ..." line at
+once won't trigger it — type the ! yourself, then paste the rest), then run:
+opencode-hard-limit postpone <minutes> (default 30, e.g. "opencode-hard-limit
+postpone 60") — no LLM cost.
 ```
 
-Type that command directly in OpenCode's prompt (the leading `!` runs it as a
-local shell command — no LLM call, no token cost):
+**Important — type the `!`, don't paste it:** OpenCode only enters shell mode
+when `!` is the first character *typed* into an empty prompt. If you copy the
+whole `!opencode-hard-limit postpone 60` line (with the `!`) and paste it in
+one go, OpenCode will **not** switch to shell mode — the paste lands as a
+normal chat message instead. To run the command correctly:
 
-```
-!opencode-hard-limit postpone 60
-```
+1. Type `!` yourself (one keystroke, empty prompt) to enter shell mode.
+2. Paste (or type) just `opencode-hard-limit postpone 60` — **without** the
+   leading `!`.
+3. Press Enter.
 
 This postpones **any** quota block (any provider, any window) for 60 minutes.
-Cancel it early with:
+Cancel it early the same way — type `!`, then paste:
 
 ```
-!opencode-hard-limit postpone --clear
+opencode-hard-limit postpone --clear
 ```
 
 `opencode-hard-limit get` shows whether a postpone is currently active and how
@@ -302,9 +308,10 @@ much time is left. Postpone duration is clamped to 1–240 minutes. If
 blocks resume immediately.
 
 The sidebar widget also shows a red two-line hint ("To postpone the blockage
-for 30 min, type: ...") whenever a monitored provider is currently blocked and
-fail-postpone is enabled but not active. It disappears automatically once you
-postpone or once quota refreshes above the threshold.
+for 30 min: type ! then paste: opencode-hard-limit postpone 30") whenever a
+monitored provider is currently blocked and fail-postpone is enabled but not
+active. It disappears automatically once you postpone or once quota refreshes
+above the threshold.
 
 **Known limitation — subagents:** if a subagent (e.g. one dispatched via
 OpenCode's `task` tool) is the one whose call gets blocked, its parent

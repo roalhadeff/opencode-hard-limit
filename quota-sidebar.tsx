@@ -348,10 +348,10 @@ function SidebarContentView(props: { api: TuiPluginApi; sessionID: string }) {
       {showPostponeHint() ? (
         <box gap={0} flexDirection="column">
           <text fg={theme.error} wrapMode="wrap">
-            {`To postpone the blockage for ${DEFAULT_POSTPONE_MINUTES} min, type:`}
+            {`To postpone the blockage for ${DEFAULT_POSTPONE_MINUTES} min: type ! (do not paste it),`}
           </text>
           <text fg={theme.error} wrapMode="wrap">
-            {`!opencode-hard-limit postpone ${DEFAULT_POSTPONE_MINUTES} on the text terminal.`}
+            {`then paste: opencode-hard-limit postpone ${DEFAULT_POSTPONE_MINUTES}`}
           </text>
         </box>
       ) : null}

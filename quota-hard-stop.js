@@ -169,8 +169,10 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
         }
         if (cfg.allowPostpone) {
           blockMsg +=
-            ` To postpone this block, run: !opencode-hard-limit postpone <minutes> ` +
-            `(default 30, e.g. "!opencode-hard-limit postpone 60") in OpenCode's shell mode — no LLM cost.`;
+            ` To postpone this block: in OpenCode, type ! by itself first to enter shell mode ` +
+            `(pasting a whole "!opencode-hard-limit ..." line at once won't trigger it — type the ! ` +
+            `yourself, then paste the rest), then run: opencode-hard-limit postpone <minutes> ` +
+            `(default 30, e.g. "opencode-hard-limit postpone 60") — no LLM cost.`;
         } else {
           blockMsg +=
             ` There is no override configured for this. Wait for quota to refresh, or raise the ` +
