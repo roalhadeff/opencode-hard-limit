@@ -277,11 +277,9 @@ Once enabled, a block's error message includes a hint like:
 
 ```
 [quota-hard-stop] Blocked anthropic (anthropic): quota 12% remaining is below
-the 30% threshold. ... To postpone this block for a while, run
-"!opencode-hard-limit postpone <minutes>" (shell mode, no LLM cost) — the
-number is how many minutes to postpone for, e.g.
-"!opencode-hard-limit postpone 60" postpones for 60 minutes (default 30 if
-omitted).
+the 30% threshold. ... To postpone this block, run: !opencode-hard-limit
+postpone <minutes> (default 30, e.g. "!opencode-hard-limit postpone 60") in
+OpenCode's shell mode — no LLM cost.
 ```
 
 Type that command directly in OpenCode's prompt (the leading `!` runs it as a
@@ -302,6 +300,21 @@ Cancel it early with:
 much time is left. Postpone duration is clamped to 1–240 minutes. If
 `--allow-postpone` is later disabled, any leftover postpone timer is ignored —
 blocks resume immediately.
+
+The sidebar widget also shows a red two-line hint ("To postpone the blockage
+for 30 min, type: ...") whenever a monitored provider is currently blocked and
+fail-postpone is enabled but not active. It disappears automatically once you
+postpone or once quota refreshes above the threshold.
+
+**Known limitation — subagents:** if a subagent (e.g. one dispatched via
+OpenCode's `task` tool) is the one whose call gets blocked, its parent
+orchestrator currently sees an **empty** result instead of this message.
+OpenCode's `task` tool only returns the subagent's generated text; since this
+plugin blocks *before* any text is generated, there's nothing for the task
+tool to relay. This is a gap in OpenCode itself (tracked upstream), not
+something this plugin can work around. If a subagent's task mysteriously
+returns empty, check `opencode-hard-limit get` or the sidebar for an active
+block.
 
 ## Requirements
 
