@@ -6,6 +6,7 @@ import { createSignal, onCleanup, onMount } from "solid-js";
 import { MONITORED_PROVIDERS, readWeekly, quotaCachePath } from "./lib/quota.js";
 import { resolveConfig, windowForProvider } from "./lib/config.js";
 import { formatReset } from "./lib/reset.js";
+import { isPostponeActive, DEFAULT_POSTPONE_MINUTES } from "./lib/postpone.js";
 
 const PLUGIN_ID = "felipesotero.quota-sidebar";
 const SIDEBAR_ORDER = 175;
@@ -231,6 +232,16 @@ function SidebarContentView(props: { api: TuiPluginApi; sessionID: string }) {
   const renderableProviders = () => providerStates().filter(({ state }) => Boolean(state));
   const shouldShowChecking = () => !hasAnyResult();
 
+  const isProviderBlocked = (state: QuotaSnapshot | undefined) => {
+    if (!state || state.unlimited === true) return false;
+    const remainingValue = typeof state.remaining === "number" ? clamp(state.remaining, 0, 100) : null;
+    return typeof remainingValue === "number" && remainingValue <= minRemaining;
+  };
+  const showPostponeHint = () =>
+    cfg.allowPostpone === true &&
+    !isPostponeActive() &&
+    providerStates().some(({ state }) => isProviderBlocked(state));
+
   return (
     <box gap={1} flexDirection="column">
       <box flexDirection="row">
@@ -333,6 +344,17 @@ function SidebarContentView(props: { api: TuiPluginApi; sessionID: string }) {
           })
         )}
       </box>
+
+      {showPostponeHint() ? (
+        <box gap={0} flexDirection="column">
+          <text fg={theme.error} wrapMode="wrap">
+            {`To postpone the blockage for ${DEFAULT_POSTPONE_MINUTES} min, type:`}
+          </text>
+          <text fg={theme.error} wrapMode="wrap">
+            {`!opencode-hard-limit postpone ${DEFAULT_POSTPONE_MINUTES} on the text terminal.`}
+          </text>
+        </box>
+      ) : null}
     </box>
   );
 }
