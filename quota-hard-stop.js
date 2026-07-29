@@ -20,7 +20,7 @@
 import { readWeekly, MONITORED_PROVIDERS, quotaCachePath } from "./lib/quota.js";
 import { resolveConfig, windowForProvider } from "./lib/config.js";
 import { resolveQuotaProvider, evaluate } from "./lib/evaluate.js";
-import { ensureTuiDeployed, cleanupLegacyCopies } from "./lib/deploy.js";
+import { ensureCliInstalled, ensureTuiDeployed, cleanupLegacyCopies } from "./lib/deploy.js";
 import { isPostponeActive } from "./lib/postpone.js";
 
 const cache = new Map(); // "quotaProvider:window" -> { at, result, ttl }
@@ -28,6 +28,7 @@ const inflight = new Map(); // "quotaProvider:window" -> Promise (dedupe concurr
 const seenKeys = new Set(); // tracked provider:window combos seen in chat.params
 const ERROR_TTL_CAP_MS = 10000; // cap transient failures; stale entries can be background-refreshed
 let quotaReader = readWeekly;
+let cliInstaller = ensureCliInstalled;
 
 function cacheKey(provider, window) {
   return `${provider}:${window}`;
@@ -100,9 +101,10 @@ function humanReason(reason, fallback) {
 }
 
 export const QuotaHardStopPlugin = async ({ directory } = {}) => {
-  // Self-heal: ensure deployed sidebar matches the installed npm version.
+  // Self-heal: ensure deployed sidebar and globally callable CLI match the installed npm version.
   // ensureTuiDeployed never throws — outer try/catch is not needed.
   ensureTuiDeployed();
+  cliInstaller();
   // Defer cleanupLegacyCopies to avoid racing opencode's plugins-dir autoloader.
   setTimeout(() => { try { cleanupLegacyCopies(); } catch {} }, 30_000).unref?.();
 
@@ -228,6 +230,12 @@ QuotaHardStopPlugin.__test__ = {
   },
   resetQuotaReader() {
     quotaReader = readWeekly;
+  },
+  setCliInstaller(fn) {
+    cliInstaller = typeof fn === "function" ? fn : ensureCliInstalled;
+  },
+  resetCliInstaller() {
+    cliInstaller = ensureCliInstalled;
   },
 };
 

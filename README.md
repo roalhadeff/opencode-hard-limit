@@ -51,6 +51,11 @@ Then **restart OpenCode**. That is it.
    whether the deployed file matches the currently installed npm version and
    re-copies it if not, so sidebar and server plugin stay in sync automatically.
 
+3. **Registers the CLI** — when the server plugin starts, it installs the
+   matching published package globally in the background. This makes
+   `opencode-hard-limit` available in OpenCode shell mode for commands such as
+   `opencode-hard-limit postpone 30`.
+
 There is **no external quota dependency**. The plugin reads quota itself:
 for Claude/Anthropic it uses your local `claude` CLI (or the OAuth usage API as
 a fallback), and for OpenAI it uses the OAuth session in OpenCode's

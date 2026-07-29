@@ -9,6 +9,7 @@ import { resolveConfig } from "../lib/config.js";
 import { writePostpone, clearPostpone } from "../lib/postpone.js";
 
 const { __test__ } = QuotaHardStopPlugin;
+__test__.setCliInstaller(() => {});
 
 function sandbox() {
   const root = mkdtempSync(join(tmpdir(), "qhl-hard-stop-"));
@@ -58,6 +59,15 @@ function fallbackResult(remaining, { window = "Weekly", requestedWindow = "5h" }
     windowFallback: true,
   };
 }
+
+test("plugin initialization invokes the CLI installer", async () => {
+  let calls = 0;
+  __test__.setCliInstaller(() => { calls += 1; });
+  await QuotaHardStopPlugin({ directory: process.cwd() });
+  __test__.setCliInstaller(() => {});
+
+  assert.equal(calls, 1);
+});
 
 test("stale cache is served immediately and refreshes in the background", async () => {
   const { xdg, proj } = sandbox();
@@ -344,4 +354,3 @@ test("block message omits the postpone hint when allowPostpone is disabled (defa
     __test__.clearState();
   }
 });
-
