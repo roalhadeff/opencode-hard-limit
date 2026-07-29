@@ -11,14 +11,13 @@ immediately actionable from OpenCode shell mode.
 `lib/deploy.js` will export `ensureCliInstalled()`. At plugin startup it will:
 
 1. Determine the installed package version from the package's `package.json`.
-2. Check the globally available CLI version, if any.
-3. Do nothing if that version matches the plugin package version.
-4. Otherwise start `npm install --global opencode-hard-limit@<version>` as a
+2. Start `npm install --global opencode-hard-limit@<version>` as a
    detached, best-effort process.
 
-The function is process-idempotent and never throws. It must not delay or
-affect quota checks. `quota-hard-stop.js` invokes it alongside the existing
-sidebar self-heal deployment.
+The npm install is idempotent and reconciles the installed version; a
+process-level guard prevents duplicate startup processes. The function never
+throws and must not delay or affect quota checks. `quota-hard-stop.js` invokes
+it alongside the existing sidebar self-heal deployment.
 
 ## Failure handling
 
