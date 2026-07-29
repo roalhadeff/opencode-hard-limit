@@ -10,7 +10,7 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { ensureTuiDeployed, cleanupLegacyCopies } from "../lib/deploy.js";
+import { ensureCliInstalled, ensureTuiDeployed, cleanupLegacyCopies } from "../lib/deploy.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,6 +50,11 @@ function withEnv(env, fn) {
  */
 function fakePkgRoot(dir, tsxContent = "// fake sidebar\nexport default function() {}") {
   mkdirSync(join(dir, "lib"), { recursive: true });
+  writeFileSync(
+    join(dir, "package.json"),
+    JSON.stringify({ name: "opencode-hard-limit", version: "9.8.7" }),
+    "utf8",
+  );
   writeFileSync(join(dir, "quota-sidebar.tsx"), tsxContent, "utf8");
   writeFileSync(
     join(dir, "lib", "quota.js"),
@@ -73,6 +78,27 @@ function fakePkgRoot(dir, tsxContent = "// fake sidebar\nexport default function
   );
   return dir;
 }
+
+test("ensureCliInstalled: starts a detached npm install for the package version", () => {
+  const { root } = sandbox();
+  const pkg = fakePkgRoot(join(root, "pkg"));
+  const calls = [];
+  const child = { on() {}, unref() {} };
+
+  ensureCliInstalled({
+    pkgRoot: pkg,
+    spawnProcess(...args) {
+      calls.push(args);
+      return child;
+    },
+  });
+
+  assert.deepEqual(calls, [[
+    "npm",
+    ["install", "--global", "opencode-hard-limit@9.8.7"],
+    { stdio: "ignore", detached: true },
+  ]]);
+});
 
 // ---------------------------------------------------------------------------
 // ensureTuiDeployed tests
