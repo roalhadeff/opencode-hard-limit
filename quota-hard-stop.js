@@ -95,6 +95,7 @@ async function refreshQuota(
     cacheTtlMs: cfg.cacheTtlMs,
     rateLimitBackoffMs: cfg.rateLimitBackoffMs,
     maxRateLimitBackoffMs: cfg.maxRateLimitBackoffMs,
+    noBaselineRateLimitBackoffMs: cfg.noBaselineRateLimitBackoffMs,
     minRefreshIntervalMs: cfg.minRefreshIntervalMs,
     cacheFile: quotaCachePath(),
     anthropicProfileDirs: cfg.anthropicProfileDirs,

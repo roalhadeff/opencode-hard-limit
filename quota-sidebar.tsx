@@ -181,6 +181,8 @@ function SidebarContentView(props: { api: TuiPluginApi; sessionID: string }) {
               cacheTtlMs: cfg.cacheTtlMs,
               minRefreshIntervalMs: cfg.minRefreshIntervalMs,
               rateLimitBackoffMs: cfg.rateLimitBackoffMs,
+              maxRateLimitBackoffMs: cfg.maxRateLimitBackoffMs,
+              noBaselineRateLimitBackoffMs: cfg.noBaselineRateLimitBackoffMs,
               cacheFile: quotaCachePath(),
               anthropicProfileDirs: cfg.anthropicProfileDirs,
               openaiAccountsFile: cfg.openaiAccountsFile,
