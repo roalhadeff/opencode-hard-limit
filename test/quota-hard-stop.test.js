@@ -4,7 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import QuotaHardStopPlugin from "../quota-hard-stop.js";
+import { QuotaHardStopPlugin } from "../quota-hard-stop.js";
 import { resolveConfig } from "../lib/config.js";
 import { writePostpone, clearPostpone } from "../lib/postpone.js";
 

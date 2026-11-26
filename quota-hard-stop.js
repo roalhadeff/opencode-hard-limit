@@ -131,6 +131,105 @@ function humanReason(reason, fallback) {
   return i >= 0 ? reason.slice(i + 1) : fallback;
 }
 
+/**
+ * Check quota for a call to `providerId` and throw when it must be blocked.
+ * Shared by the V1 `chat.params` hook and the V2 `model.request` hook.
+ */
+async function guardProviderCall(providerId, directory) {
+  const cfg = resolveConfig({ projectDir: directory }).values;
+
+  const quotaProvider = resolveQuotaProvider(providerId);
+  if (!quotaProvider) return; // provider not monitored -> allow
+
+  const quotaWindow = windowForProvider(cfg, quotaProvider);
+  // When this call targets a specific Claude profile (e.g. provider id
+  // "claude-pro" / "claude-max" from @openchamber/opencode-claude's
+  // one-instance-per-account pattern), check THAT account's quota
+  // instead of always falling back to the single default login shared
+  // by every Anthropic provider id.
+  const accountId = resolveAnthropicAccountId(providerId, quotaProvider, cfg);
+
+  const key = cacheKey(quotaProvider, quotaWindow, accountId);
+  seenKeys.add(key);
+
+  const cachedEntry = getCacheEntry(quotaProvider, quotaWindow, accountId);
+  let res;
+  if (!cachedEntry) {
+    res = await refreshQuota(quotaProvider, cfg, { window: quotaWindow, force: true, accountId });
+  } else {
+    res = cachedEntry.result;
+    if (!isCacheFresh(cachedEntry)) {
+      refreshQuota(quotaProvider, cfg, { window: quotaWindow, accountId }).catch(() => {});
+    }
+  }
+  let { block, reason } = evaluate(quotaProvider, res, cfg);
+
+  if (block && cfg.allowPostpone && isPostponeActive()) {
+    block = false;
+    reason = "postponed";
+  }
+
+  if (block) {
+    let blockMsg;
+    if (reason === "below-threshold") {
+      blockMsg =
+        `quota ${res.remaining}% remaining is below the ${cfg.minRemaining}% threshold. ` +
+        `Raise your budget: opencode-hard-limit set --threshold <lower> --global ` +
+        `(or OPENCODE_QUOTA_MIN_REMAINING=<lower>).`;
+    } else if (reason === "stale-failsafe") {
+      const ageMin = Math.round((Date.now() - res.receivedAt) / 60000);
+      blockMsg =
+        `last known quota ${res.remaining}% is ${ageMin}min old and could not be refreshed` +
+        `${res.backoffUntil ? " (usage endpoint rate-limited, retry ~" + new Date(res.backoffUntil).toLocaleTimeString() + ")" : ""}; ` +
+        `it is within ${cfg.staleBlockMarginPct}% of your ${cfg.minRemaining}% threshold, so blocking as a precaution. ` +
+        `Set OPENCODE_QUOTA_STALE_BLOCK_MARGIN=0 (or --stale-margin 0) to disable the stale fail-safe.`;
+    } else if (reason === "unreadable") {
+      blockMsg =
+        `quota data is unreadable (percentRemaining missing). ` +
+        `Set OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR=0 to allow calls when quota cannot be read.`;
+    } else {
+      const hr = humanReason(reason, reason);
+      const isAuth = reason.startsWith("auth-error:");
+      blockMsg = isAuth
+        ? `quota could not be read (${hr}). ` +
+          `Refresh your provider login or set OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR=0 to allow.`
+        : `quota check failed (${hr}). ` +
+          `Set OPENCODE_QUOTA_BLOCK_ON_ERROR=0 to allow when quota cannot be checked.`;
+    }
+    if (cfg.allowPostpone) {
+      blockMsg +=
+        ` To postpone this block: in OpenCode, type ! by itself first to enter shell mode ` +
+        `(pasting a whole "!opencode-hard-limit ..." line at once won't trigger it — type the ! ` +
+        `yourself, then paste the rest), then run: opencode-hard-limit postpone <minutes> ` +
+        `(default 30, e.g. "opencode-hard-limit postpone 60") — no LLM cost.`;
+    } else {
+      blockMsg +=
+        ` There is no override configured for this. Wait for quota to refresh, or raise the ` +
+        `threshold: opencode-hard-limit set --threshold <value> --global.`;
+    }
+    const quotaProviderLabel = accountId ? `${quotaProvider}:${accountId}` : quotaProvider;
+    throw new Error(`[quota-hard-stop] Blocked ${providerId} (${quotaProviderLabel}): ${blockMsg}`);
+  }
+  // Otherwise allow silently — no toast/sound; the sidebar widget is the
+  // only surface for quota state (including unreadable/fallback cases).
+}
+
+/** Refresh every quota key seen so far; never throws. */
+async function refreshSeenQuotas(directory) {
+  try {
+    if (seenKeys.size === 0) return;
+    const cfg = resolveConfig({ projectDir: directory }).values;
+    const refreshes = [];
+    for (const key of seenKeys) {
+      const [provider, window, accountId] = parseSeenKey(key);
+      refreshes.push(refreshQuota(provider, cfg, { window, accountId }));
+    }
+    await Promise.allSettled(refreshes);
+  } catch {
+    // must never interfere with the agent lifecycle
+  }
+}
+
 export const QuotaHardStopPlugin = async ({ directory } = {}) => {
   // Self-heal: ensure deployed sidebar and globally callable CLI match the installed npm version.
   // ensureTuiDeployed never throws — outer try/catch is not needed.
@@ -140,88 +239,13 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
   setTimeout(() => { try { cleanupLegacyCopies(); } catch {} }, 30_000).unref?.();
 
   return {
-    "chat.params": async (input) => {
-      const cfg = resolveConfig({ projectDir: directory }).values;
-
+    "chat.params": (input) => {
       const providerId =
         input?.provider?.info?.id ??
         input?.model?.providerID ??
         input?.model?.provider;
-
-      const quotaProvider = resolveQuotaProvider(providerId);
-      if (!quotaProvider) return; // provider not monitored -> allow
-
-      const quotaWindow = windowForProvider(cfg, quotaProvider);
-      // When this call targets a specific Claude profile (e.g. provider id
-      // "claude-pro" / "claude-max" from @openchamber/opencode-claude's
-      // one-instance-per-account pattern), check THAT account's quota
-      // instead of always falling back to the single default login shared
-      // by every Anthropic provider id.
-      const accountId = resolveAnthropicAccountId(providerId, quotaProvider, cfg);
-
-      const key = cacheKey(quotaProvider, quotaWindow, accountId);
-      seenKeys.add(key);
-
-      const cachedEntry = getCacheEntry(quotaProvider, quotaWindow, accountId);
-      let res;
-      if (!cachedEntry) {
-        res = await refreshQuota(quotaProvider, cfg, { window: quotaWindow, force: true, accountId });
-      } else {
-        res = cachedEntry.result;
-        if (!isCacheFresh(cachedEntry)) {
-          refreshQuota(quotaProvider, cfg, { window: quotaWindow, accountId }).catch(() => {});
-        }
-      }
-      let { block, reason } = evaluate(quotaProvider, res, cfg);
-
-      if (block && cfg.allowPostpone && isPostponeActive()) {
-        block = false;
-        reason = "postponed";
-      }
-
-      if (block) {
-        let blockMsg;
-        if (reason === "below-threshold") {
-          blockMsg =
-            `quota ${res.remaining}% remaining is below the ${cfg.minRemaining}% threshold. ` +
-            `Raise your budget: opencode-hard-limit set --threshold <lower> --global ` +
-            `(or OPENCODE_QUOTA_MIN_REMAINING=<lower>).`;
-        } else if (reason === "stale-failsafe") {
-          const ageMin = Math.round((Date.now() - res.receivedAt) / 60000);
-          blockMsg =
-            `last known quota ${res.remaining}% is ${ageMin}min old and could not be refreshed` +
-            `${res.backoffUntil ? " (usage endpoint rate-limited, retry ~" + new Date(res.backoffUntil).toLocaleTimeString() + ")" : ""}; ` +
-            `it is within ${cfg.staleBlockMarginPct}% of your ${cfg.minRemaining}% threshold, so blocking as a precaution. ` +
-            `Set OPENCODE_QUOTA_STALE_BLOCK_MARGIN=0 (or --stale-margin 0) to disable the stale fail-safe.`;
-        } else if (reason === "unreadable") {
-          blockMsg =
-            `quota data is unreadable (percentRemaining missing). ` +
-            `Set OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR=0 to allow calls when quota cannot be read.`;
-        } else {
-          const hr = humanReason(reason, reason);
-          const isAuth = reason.startsWith("auth-error:");
-          blockMsg = isAuth
-            ? `quota could not be read (${hr}). ` +
-              `Refresh your provider login or set OPENCODE_QUOTA_BLOCK_ON_AUTH_ERROR=0 to allow.`
-            : `quota check failed (${hr}). ` +
-              `Set OPENCODE_QUOTA_BLOCK_ON_ERROR=0 to allow when quota cannot be checked.`;
-        }
-        if (cfg.allowPostpone) {
-          blockMsg +=
-            ` To postpone this block: in OpenCode, type ! by itself first to enter shell mode ` +
-            `(pasting a whole "!opencode-hard-limit ..." line at once won't trigger it — type the ! ` +
-            `yourself, then paste the rest), then run: opencode-hard-limit postpone <minutes> ` +
-            `(default 30, e.g. "opencode-hard-limit postpone 60") — no LLM cost.`;
-        } else {
-          blockMsg +=
-            ` There is no override configured for this. Wait for quota to refresh, or raise the ` +
-            `threshold: opencode-hard-limit set --threshold <value> --global.`;
-        }
-        const quotaProviderLabel = accountId ? `${quotaProvider}:${accountId}` : quotaProvider;
-        throw new Error(`[quota-hard-stop] Blocked ${providerId} (${quotaProviderLabel}): ${blockMsg}`);
-      }
-      // Otherwise allow silently — no toast/sound; the sidebar widget is the
-      // only surface for quota state (including unreadable/fallback cases).
+      // Return the promise directly (no extra await) so a cached result settles in one tick.
+      return guardProviderCall(providerId, directory);
     },
     event: async ({ event }) => {
       try {
@@ -230,23 +254,32 @@ export const QuotaHardStopPlugin = async ({ directory } = {}) => {
         const isIdle =
           event.type === "session.idle" ||
           (event.type === "session.status" && event.properties?.status?.type === "idle");
-        if (!isIdle || seenKeys.size === 0) return;
-
-        const cfg = resolveConfig({ projectDir: directory }).values;
-        const refreshes = [];
-
-        for (const key of seenKeys) {
-          const [provider, window, accountId] = parseSeenKey(key);
-          refreshes.push(refreshQuota(provider, cfg, { window, accountId }));
-        }
-
-        await Promise.allSettled(refreshes);
+        if (!isIdle) return;
+        await refreshSeenQuotas(directory);
       } catch {
         // event hook must never interfere with the agent lifecycle
       }
     },
   };
 };
+
+// OpenCode 2 plugin: `setup(ctx)` registers the same quota guard on the V2
+// `model.request` hook and refreshes on `experimental.idle`. Throwing from the
+// hook aborts the model call, same as V1 `chat.params`.
+async function setupV2(ctx) {
+  const directory = ctx?.location?.directory;
+  // No ensureTuiDeployed()/cleanupLegacyCopies() here: OpenCode 2 loads the
+  // sidebar from this package's ./tui export (tui.tsx), not from a copy in
+  // the plugins dir or a tui.json entry.
+  cliInstaller();
+
+  await ctx.session.hook("model.request", async (request) => {
+    await guardProviderCall(request?.model?.providerID, directory);
+  });
+  await ctx.session.hook("experimental.idle", async () => {
+    await refreshSeenQuotas(directory);
+  });
+}
 
 QuotaHardStopPlugin.__test__ = {
   cache,
@@ -277,4 +310,10 @@ QuotaHardStopPlugin.__test__ = {
   },
 };
 
-export default QuotaHardStopPlugin;
+// Default export is a plugin definition object (required by OpenCode 2):
+// `id` + `setup` for V2, `server` for the OpenCode 1.x loader.
+export default {
+  id: "opencode-hard-limit",
+  server: QuotaHardStopPlugin,
+  setup: setupV2,
+};

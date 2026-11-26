@@ -9,7 +9,8 @@
   },
   "exports": {
     ".": "./quota-hard-stop.js",
-    "./config": "./lib/config.js"
+    "./config": "./lib/config.js",
+    "./tui": "./tui.tsx"
   },
   "bin": {
     "opencode-hard-limit": "bin/cli.js"
@@ -17,6 +18,7 @@
   "files": [
     "quota-hard-stop.js",
     "quota-sidebar.tsx",
+    "tui.tsx",
     "lib/config.js",
     "lib/deploy.js",
     "lib/quota.js",
